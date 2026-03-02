@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="2000" height="2000" viewBox="0 0 200 200" xmlns="http://www.w3.org" xmlns:xlink="http://www.w3.org">
+  <defs>
+    <!-- Premium Gold Gradient -->
+    <linearGradient id="coinGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8A6E2F" />
+      <stop offset="50%" stop-color="#FFD700" />
+      <stop offset="100%" stop-color="#B8860B" />
+    </linearGradient>
+    
+    <!-- Vibrant "Zero Mumu" Green -->
+    <linearGradient id="safeGreen" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00A859" />
+      <stop offset="100%" stop-color="#006747" />
+    </linearGradient>
+
+    <!-- Professional 3D Shine Filter -->
+    <filter id="shine">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
+      <feSpecularLighting in="blur" surfaceScale="5" specularConstant="1" specularExponent="40" lightingColor="#fff" result="light">
+        <fePointLight x="-5000" y="-10000" z="20000" />
+      </feSpecularLighting>
+      <feComposite in="light" in2="SourceAlpha" operator="in" result="light" />
+      <feComposite in="SourceGraphic" in2="light" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" />
+    </filter>
+  </defs>
+
+  <!-- Background (Transparent) -->
+  <rect width="200" height="200" fill="none" />
+
+  <!-- 1. The Protection Ring (Outer Guard) -->
+  <circle cx="100" cy="100" r="90" fill="none" stroke="url(#safeGreen)" stroke-width="15" />
+
+  <!-- 2. The 3D Gold Naira Coin -->
+  <circle cx="100" cy="100" r="72" fill="url(#coinGold)" filter="url(#shine)" />
+  
+  <!-- 3. The Bold Naira Symbol (The Mass Identifier) -->
+  <text x="100" y="138" text-anchor="middle" font-family="Arial, sans-serif" font-size="115" font-weight="900" fill="#4D3D1A">₦</text>
+
+  <!-- 4. ZMT Branding Pill -->
+  <rect x="60" y="145" width="80" height="28" rx="6" fill="#006747" />
+  <text x="100" y="165" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="bold" fill="#ffffff">ZMT</text>
+</svg>
