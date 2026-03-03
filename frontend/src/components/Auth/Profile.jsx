@@ -467,8 +467,10 @@ const Profile = ({ user: initialUser, onLogout, creditBalance, setCreditBalance,
             )}
           </div>
 
-          {/* Savings Progress Bar - Phase 11 */}
-          <SavingsProgressBar userId={profile.id} userStats={userStats} />
+          {/* Savings Progress Bar - Only render if profile.id exists */}
+          {profile?.id && (
+            <SavingsProgressBar userId={profile.id} userStats={userStats} />
+          )}
 
           <div className="stats-card">
             <h3>Your Tax Statistics</h3>
@@ -623,20 +625,20 @@ const Profile = ({ user: initialUser, onLogout, creditBalance, setCreditBalance,
       {/* Modals */}
       {showViewer && selectedCalculation && (
         <SavedCalculationViewer
-  calculation={selectedCalculation}
-  user={user}  // ← Add this line
-  onClose={() => {
-    setShowViewer(false);
-    setSelectedCalculation(null);
-  }}
-  onUse={() => {
-    handleUseCalculation(selectedCalculation);
-    setShowViewer(false);
-  }}
-  creditBalance={creditBalance}
-  setCreditBalance={setCreditBalance}
-  setActiveTab={setActiveTab}
-/>
+          calculation={selectedCalculation}
+          user={profile}  // ← Fixed: changed from 'user' to 'profile'
+          onClose={() => {
+            setShowViewer(false);
+            setSelectedCalculation(null);
+          }}
+          onUse={() => {
+            handleUseCalculation(selectedCalculation);
+            setShowViewer(false);
+          }}
+          creditBalance={creditBalance}
+          setCreditBalance={setCreditBalance}
+          setActiveTab={setActiveTab}
+        />
       )}
 
       {showWhatIf && (

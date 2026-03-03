@@ -12,7 +12,6 @@ import Profile from './components/Auth/Profile';
 import ProfileSetup from './components/Auth/ProfileSetup';
 import CreditPurchaseModal from './components/CreditPurchase/CreditPurchaseModal';
 import ReferralModal from './components/Referral/ReferralModal';
-import SavingsTeaser from './components/Marketing/SavingsTeaser';
 import NigerianLogo from './components/Logo/NigerianLogo';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import RouteHandler from './components/RouteHandler';
@@ -38,13 +37,14 @@ function App() {
   const [showLoginNudge, setShowLoginNudge] = useState(false);
   const [nudgeCalculator, setNudgeCalculator] = useState(null);
   const [restoreCalculation, setRestoreCalculation] = useState(null);
-  const [profileComplete, setProfileComplete] = useState(false);
-  const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [showReferralModal, setShowReferralModal] = useState(false);
   const [userStats, setUserStats] = useState(null);
-const [pendingFormData, setPendingFormData] = useState(null);
-const [pendingCalculation, setPendingCalculation] = useState(null);
+  const [pendingFormData, setPendingFormData] = useState(null);
+  const [pendingCalculation, setPendingCalculation] = useState(null);
+
+  // Compute if profile setup is needed directly from user data
+  const needsProfile = isLoggedIn && user && (!user.date_of_birth || !user.occupation || !user.state_of_origin || !user.state_of_residence);
 
   useEffect(() => {
     sessionStorage.setItem('activeTab', activeTab);
@@ -54,7 +54,6 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
     checkBackend();
     checkAuth();
     
-    // Token refresh interval (every 25 minutes)
     const interval = setInterval(refreshToken, 25 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
@@ -65,22 +64,12 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
     }
   }, [activeTab]);
 
+  // If profile is needed and we're not on account tab, redirect
   useEffect(() => {
-  // Only show profile setup if user is logged in AND has no profile data
-  if (authChecked && isLoggedIn && user) {
-    const needsProfile = !user.date_of_birth || 
-                        !user.occupation || 
-                        !user.state_of_origin || 
-                        !user.state_of_residence;
-    
-    setShowProfileSetup(needsProfile);
     if (needsProfile && activeTab !== 'account') {
       setActiveTab('account');
     }
-  } else {
-    setShowProfileSetup(false);
-  }
-}, [authChecked, isLoggedIn, user, activeTab]);
+  }, [needsProfile, activeTab]);
 
   useEffect(() => {
     const handleOpenCreditModal = () => setShowCreditModal(true);
@@ -110,44 +99,40 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
     }
   };
 
-  const checkProfileComplete = (userData) => {
-    if (!userData) return false;
-    const required = ['date_of_birth', 'occupation', 'state_of_origin', 'state_of_residence'];
-    const isComplete = required.every(f => userData[f] && userData[f].trim() !== '');
-    setProfileComplete(isComplete);
-    return isComplete;
+  const checkAuth = async () => {
+    const token = sessionStorage.getItem('access_token');
+    if (!token) {
+      setAuthChecked(true);
+      return;
+    }
+
+    try {
+      const res = await api.get('/api/auth/me');
+      if (res.data.success) {
+        setUser(res.data.user);
+        setIsLoggedIn(true);
+        setCreditBalance(res.data.user.credit_balance || 0);
+      }
+    } catch {
+      sessionStorage.removeItem('access_token');
+      sessionStorage.removeItem('refresh_token');
+      sessionStorage.removeItem('user');
+    } finally {
+      setAuthChecked(true);
+    }
   };
 
-  const checkAuth = async () => {
-  const token = sessionStorage.getItem('access_token');
-  if (!token) {
-    setAuthChecked(true);
-    return;
-  }
-
-  try {
-    const res = await api.get('/api/auth/me');
-    if (res.data.success) {
-      setUser(res.data.user);
-      setIsLoggedIn(true);
-      setCreditBalance(res.data.user.credit_balance || 0);
-      
-      // Check if user has ever completed profile
-      const hasProfile = res.data.user.date_of_birth && 
-                        res.data.user.occupation && 
-                        res.data.user.state_of_origin && 
-                        res.data.user.state_of_residence;
-      
-      setProfileComplete(!!hasProfile);
+  const fetchUserData = async () => {
+    try {
+      const res = await api.get('/api/auth/me');
+      if (res.data.success) {
+        setUser(res.data.user);
+        setCreditBalance(res.data.user.credit_balance || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user data', err);
     }
-  } catch {
-    sessionStorage.removeItem('access_token');
-    sessionStorage.removeItem('refresh_token');
-    sessionStorage.removeItem('user');
-  } finally {
-    setAuthChecked(true);
-  }
-};
+  };
 
   const fetchUserStats = async () => {
     try {
@@ -159,35 +144,30 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
   };
 
   const handleLoginSuccess = (userData) => {
-  setIsLoggedIn(true);
-  setUser(userData);
-  setCreditBalance(userData.credit_balance || 0);
-  
-  // Check if there's pending form data to restore
-  if (pendingFormData) {
-    // You need to pass this back to the PITCalculator
-    setRestoreCalculation({
-      type: 'pit',
-      data: pendingFormData
-    });
-    setPendingFormData(null);
+    setIsLoggedIn(true);
+    setUser(userData);
+    setCreditBalance(userData.credit_balance || 0);
     
-    // Switch back to PIT tab
-    setActiveTab('pit');
-  } else if (pendingAction) {
-    setActiveTab(pendingAction);
-    setPendingAction(null);
-  } else {
-    setActiveTab('account');
-  }
-  setShowLoginNudge(false);
-};
+    if (pendingFormData) {
+      setRestoreCalculation({
+        type: 'pit',
+        data: pendingFormData
+      });
+      setPendingFormData(null);
+      setActiveTab('pit');
+    } else if (pendingAction) {
+      setActiveTab(pendingAction);
+      setPendingAction(null);
+    } else {
+      setActiveTab('account');
+    }
+    setShowLoginNudge(false);
+  };
 
-  const handleProfileComplete = (updatedUser) => {
+  const handleProfileComplete = async (updatedUser) => {
     setUser(updatedUser);
-    setProfileComplete(true);
-    setShowProfileSetup(false);
     sessionStorage.setItem('user', JSON.stringify(updatedUser));
+    await fetchUserData(); // Refresh to ensure consistency
   };
 
   const handleLogout = () => {
@@ -195,8 +175,6 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
     setIsLoggedIn(false);
     setUser(null);
     setCreditBalance(0);
-    setProfileComplete(false);
-    setShowProfileSetup(false);
     setActiveTab('pit');
     window.history.pushState({}, '', '/?tab=pit');
   };
@@ -220,8 +198,8 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
       setShowLoginNudge(true);
       return;
     }
-    if (!profileComplete) {
-      setShowProfileSetup(true);
+    // Use the same computed condition
+    if (user && (!user.date_of_birth || !user.occupation || !user.state_of_origin || !user.state_of_residence)) {
       setActiveTab('account');
       return;
     }
@@ -231,10 +209,6 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
       return;
     }
     setActiveTab(tabName);
-  };
-
-  const handleTeaserLogin = () => {
-    setActiveTab('account');
   };
 
   if (!authChecked) return null;
@@ -254,37 +228,34 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
               <RouteHandler setActiveTab={setActiveTab} setRestoreCalculation={setRestoreCalculation} />
 
               <header className="header">
-  <div className="logo-container">
-    <NigerianLogo />
-    <div>
-      <h1>ZERO MUMU TAX</h1>
-      <p className="subtitle">NTA 2025 • Nigeria Revenue Service</p>
-    </div>
-  </div>
-  
-  <div className="header-actions">  
-    {isLoggedIn ? (
-      <>
-                <div className="credit-badge" onClick={() => setShowCreditModal(true)}>
-          <span>💰</span> {creditBalance} credits
-        </div>
-
-        <button className="logout-btn" onClick={handleLogout}>
-          🚪 Logout
-        </button>
-
-      </>
-    ) : (
-      /* Savings Teaser - Only shows when not logged in */
-      <SavingsTeaser onLoginClick={handleTeaserLogin} />
-    )}
-    
-    <div className={`status-badge ${backendStatus}`}>
-      <span className="status-dot"></span>
-      {backendStatus}
-    </div>
-  </div>
-</header>
+                <div className="logo-container">
+                  <NigerianLogo />
+                  <div>
+                    <h1>ZERO MUMU TAX</h1>
+                    <p className="subtitle">NTA 2025 • Nigeria Revenue Service</p>
+                  </div>
+                </div>
+                
+                <div className="header-actions">  
+                  {isLoggedIn ? (
+                    <>
+                      <div className="credit-badge" onClick={() => setShowCreditModal(true)}>
+                        <span>💰</span> {creditBalance} credits
+                      </div>
+                      <button className="logout-btn" onClick={handleLogout}>
+                        🚪 Logout
+                      </button>
+                    </>
+                  ) : (
+                    null
+                  )}
+                  
+                  <div className={`status-badge ${backendStatus}`}>
+                    <span className="status-dot"></span>
+                    {backendStatus}
+                  </div>
+                </div>
+              </header>
 
               {backendStatus === 'disconnected' && (
                 <div className="warning-banner">⚠️ Backend not running. Run: cd backend && python run.py</div>
@@ -308,7 +279,7 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
                 </div>
               )}
 
-              {showProfileSetup && (
+              {needsProfile && (
                 <ProfileSetup user={user} onComplete={handleProfileComplete} onLogout={handleLogout} />
               )}
 
@@ -345,151 +316,157 @@ const [pendingCalculation, setPendingCalculation] = useState(null);
               </div>
 
               <div className="calculator-container">
-  {/* PIT Calculator - ONLY when activeTab is 'pit' */}
-  {activeTab === 'pit' && (
-    <PITCalculator 
-  isLoggedIn={isLoggedIn} 
-  user={user}
-  creditBalance={creditBalance}
-  setCreditBalance={setCreditBalance}
-  restoreData={restoreCalculation}
-  clearRestoreData={() => setRestoreCalculation(null)}
-  pendingFormData={pendingFormData}
-  setPendingFormData={setPendingFormData}
-  pendingCalculation={pendingCalculation}
-  setPendingCalculation={setPendingCalculation}
-  requireLogin={() => { 
-    setPendingAction('pit'); 
-    setActiveTab('account'); 
-  }}
-  requireCredits={(credits, action) => {
-    if (creditBalance >= credits) {
-      action();
-    } else {
-      setPendingAction('pit');
-      setShowCreditModal(true);
-    }
-  }}
-/>
-  )}
-  
-  {/* CIT Calculator - ONLY when activeTab is 'cit' */}
-  {activeTab === 'cit' && (
-    isLoggedIn ? (profileComplete ? 
-      <CITCalculator 
-        isLoggedIn={isLoggedIn}
-        user={user}
-        creditBalance={creditBalance}
-        setCreditBalance={setCreditBalance}
-        restoreData={restoreCalculation}
-        clearRestoreData={() => setRestoreCalculation(null)}
-        requireLogin={() => { 
-          setPendingAction('cit'); 
-          setActiveTab('account'); 
-        }}
-        requireCredits={(credits, action) => {
-          if (creditBalance >= credits) {
-            action();
-          } else {
-            setPendingAction('cit');
-            setShowCreditModal(true);
-          }
-        }}
-      /> : <ProfileNeeded />) : <LoginNeeded tab="CIT" credits={2} onLogin={() => { setPendingAction('cit'); setActiveTab('account'); }} />
-  )}
-  
-  {/* VAT Calculator - ONLY when activeTab is 'vat' */}
-  {activeTab === 'vat' && (
-    isLoggedIn ? (profileComplete ? 
-      <VATCalculator 
-        isLoggedIn={isLoggedIn}
-        creditBalance={creditBalance}
-        setCreditBalance={setCreditBalance}
-        restoreData={restoreCalculation}
-        clearRestoreData={() => setRestoreCalculation(null)}
-        requireLogin={() => { 
-          setPendingAction('vat'); 
-          setActiveTab('account'); 
-        }}
-        requireCredits={(credits, action) => {
-          if (creditBalance >= credits) {
-            action();
-          } else {
-            setPendingAction('vat');
-            setShowCreditModal(true);
-          }
-        }}
-      /> : <ProfileNeeded />) : <LoginNeeded tab="VAT" credits={1} onLogin={() => { setPendingAction('vat'); setActiveTab('account'); }} />
-  )}
-  
-  {/* WHT Finder - ONLY when activeTab is 'wht' */}
-  {activeTab === 'wht' && (
-    isLoggedIn ? (profileComplete ? 
-      <WHTFinder 
-        isLoggedIn={isLoggedIn}
-        creditBalance={creditBalance}
-        setCreditBalance={setCreditBalance}
-        restoreData={restoreCalculation}
-        clearRestoreData={() => setRestoreCalculation(null)}
-        requireLogin={() => { 
-          setPendingAction('wht'); 
-          setActiveTab('account'); 
-        }}
-        requireCredits={(credits, action) => {
-          if (creditBalance >= credits) {
-            action();
-          } else {
-            setPendingAction('wht');
-            setShowCreditModal(true);
-          }
-        }}
-      /> : <ProfileNeeded />) : <LoginNeeded tab="WHT" credits={1} onLogin={() => { setPendingAction('wht'); setActiveTab('account'); }} />
-  )}
-  
-  {/* Rent Relief - ONLY when activeTab is 'rent' */}
-  {activeTab === 'rent' && (
-    isLoggedIn ? (profileComplete ? 
-      <RentRelief 
-        isLoggedIn={isLoggedIn}
-        creditBalance={creditBalance}
-        setCreditBalance={setCreditBalance}
-        restoreData={restoreCalculation}
-        clearRestoreData={() => setRestoreCalculation(null)}
-        requireLogin={() => { 
-          setPendingAction('rent'); 
-          setActiveTab('account'); 
-        }}
-        requireCredits={(credits, action) => {
-          if (creditBalance >= credits) {
-            action();
-          } else {
-            setPendingAction('rent');
-            setShowCreditModal(true);
-          }
-        }}
-      /> : <ProfileNeeded />) : <LoginNeeded tab="Rent Relief" credits={1} onLogin={() => { setPendingAction('rent'); setActiveTab('account'); }} />
-  )}
-  
-  {/* NRS Guidance - ONLY when activeTab is 'guidance' */}
-  {activeTab === 'guidance' && <NRSGuidance />}
-  
-  {/* Account Tab - ONLY when activeTab is 'account' */}
-  {activeTab === 'account' && (
-    isLoggedIn ? (
-      <Profile 
-        user={user} 
-        onLogout={handleLogout}
-        creditBalance={creditBalance}
-        setCreditBalance={setCreditBalance}
-        setRestoreCalculation={setRestoreCalculation}
-        setActiveTab={setActiveTab}
-        userStats={userStats}
-      />
-    ) : (
-      <AuthContainer onLoginSuccess={handleLoginSuccess} />
-    )
-  )}
-</div>
+                {activeTab === 'pit' && (
+                  <PITCalculator 
+                    isLoggedIn={isLoggedIn} 
+                    user={user}
+                    creditBalance={creditBalance}
+                    setCreditBalance={setCreditBalance}
+                    restoreData={restoreCalculation}
+                    clearRestoreData={() => setRestoreCalculation(null)}
+                    pendingFormData={pendingFormData}
+                    setPendingFormData={setPendingFormData}
+                    pendingCalculation={pendingCalculation}
+                    setPendingCalculation={setPendingCalculation}
+                    requireLogin={() => { 
+                      setPendingAction('pit'); 
+                      setActiveTab('account'); 
+                    }}
+                    requireCredits={(credits, action) => {
+                      if (creditBalance >= credits) {
+                        action();
+                      } else {
+                        setPendingAction('pit');
+                        setShowCreditModal(true);
+                      }
+                    }}
+                  />
+                )}
+                
+                {activeTab === 'cit' && (
+                  isLoggedIn ? (
+                    // Use the same computed condition
+                    (user && user.date_of_birth && user.occupation && user.state_of_origin && user.state_of_residence) ? (
+                      <CITCalculator 
+                        isLoggedIn={isLoggedIn}
+                        user={user}
+                        creditBalance={creditBalance}
+                        setCreditBalance={setCreditBalance}
+                        restoreData={restoreCalculation}
+                        clearRestoreData={() => setRestoreCalculation(null)}
+                        requireLogin={() => { 
+                          setPendingAction('cit'); 
+                          setActiveTab('account'); 
+                        }}
+                        requireCredits={(credits, action) => {
+                          if (creditBalance >= credits) {
+                            action();
+                          } else {
+                            setPendingAction('cit');
+                            setShowCreditModal(true);
+                          }
+                        }}
+                      />
+                    ) : <ProfileNeeded />
+                  ) : <LoginNeeded tab="CIT" credits={2} onLogin={() => { setPendingAction('cit'); setActiveTab('account'); }} />
+                )}
+                
+                {activeTab === 'vat' && (
+                  isLoggedIn ? (
+                    (user && user.date_of_birth && user.occupation && user.state_of_origin && user.state_of_residence) ? (
+                      <VATCalculator 
+                        isLoggedIn={isLoggedIn}
+                        creditBalance={creditBalance}
+                        setCreditBalance={setCreditBalance}
+                        restoreData={restoreCalculation}
+                        clearRestoreData={() => setRestoreCalculation(null)}
+                        requireLogin={() => { 
+                          setPendingAction('vat'); 
+                          setActiveTab('account'); 
+                        }}
+                        requireCredits={(credits, action) => {
+                          if (creditBalance >= credits) {
+                            action();
+                          } else {
+                            setPendingAction('vat');
+                            setShowCreditModal(true);
+                          }
+                        }}
+                      />
+                    ) : <ProfileNeeded />
+                  ) : <LoginNeeded tab="VAT" credits={1} onLogin={() => { setPendingAction('vat'); setActiveTab('account'); }} />
+                )}
+                
+                {activeTab === 'wht' && (
+                  isLoggedIn ? (
+                    (user && user.date_of_birth && user.occupation && user.state_of_origin && user.state_of_residence) ? (
+                      <WHTFinder 
+                        isLoggedIn={isLoggedIn}
+                        creditBalance={creditBalance}
+                        setCreditBalance={setCreditBalance}
+                        restoreData={restoreCalculation}
+                        clearRestoreData={() => setRestoreCalculation(null)}
+                        requireLogin={() => { 
+                          setPendingAction('wht'); 
+                          setActiveTab('account'); 
+                        }}
+                        requireCredits={(credits, action) => {
+                          if (creditBalance >= credits) {
+                            action();
+                          } else {
+                            setPendingAction('wht');
+                            setShowCreditModal(true);
+                          }
+                        }}
+                      />
+                    ) : <ProfileNeeded />
+                  ) : <LoginNeeded tab="WHT" credits={1} onLogin={() => { setPendingAction('wht'); setActiveTab('account'); }} />
+                )}
+                
+                {activeTab === 'rent' && (
+                  isLoggedIn ? (
+                    (user && user.date_of_birth && user.occupation && user.state_of_origin && user.state_of_residence) ? (
+                      <RentRelief 
+                        isLoggedIn={isLoggedIn}
+                        creditBalance={creditBalance}
+                        setCreditBalance={setCreditBalance}
+                        restoreData={restoreCalculation}
+                        clearRestoreData={() => setRestoreCalculation(null)}
+                        requireLogin={() => { 
+                          setPendingAction('rent'); 
+                          setActiveTab('account'); 
+                        }}
+                        requireCredits={(credits, action) => {
+                          if (creditBalance >= credits) {
+                            action();
+                          } else {
+                            setPendingAction('rent');
+                            setShowCreditModal(true);
+                          }
+                        }}
+                      />
+                    ) : <ProfileNeeded />
+                  ) : <LoginNeeded tab="Rent Relief" credits={1} onLogin={() => { setPendingAction('rent'); setActiveTab('account'); }} />
+                )}
+                
+                {activeTab === 'guidance' && <NRSGuidance />}
+                
+                {activeTab === 'account' && (
+                  isLoggedIn ? (
+                    <Profile 
+                      user={user} 
+                      onLogout={handleLogout}
+                      creditBalance={creditBalance}
+                      setCreditBalance={setCreditBalance}
+                      setRestoreCalculation={setRestoreCalculation}
+                      setActiveTab={setActiveTab}
+                      userStats={userStats}
+                    />
+                  ) : (
+                    <AuthContainer onLoginSuccess={handleLoginSuccess} />
+                  )
+                )}
+              </div>
 
               <footer className="footer">
                 <p>Zero Mumu Tax App • NTA 2025 Compliant</p>

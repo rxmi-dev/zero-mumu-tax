@@ -15,9 +15,12 @@ const PITCalculator = ({
   setCreditBalance,
   restoreData,
   clearRestoreData,
+  pendingCalculation,    // ← Keep this (passed from App)
+  setPendingCalculation, // ← Keep this (passed from App)
   requireLogin,
   requireCredits 
 }) => {
+
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     employment_salary: '',

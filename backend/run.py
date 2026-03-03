@@ -1,5 +1,5 @@
 # backend/run.py
-from flask import Flask, request, jsonify, make_response, send_file
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -9,14 +9,9 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime, timedelta
 import os
-import time
 import uuid
-import pandas as pd
-import io
-import json
 import hashlib
 import base64
-import hmac
 import random
 from dotenv import load_dotenv
 import requests as http_requests
@@ -56,10 +51,11 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 
 # CORS
-cors_origins = os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://localhost:5174').split(',')
+cors_origins_str = os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://localhost:5174,https://zero-mumu-tax.netlify.app,https://*.netlify.app')
+cors_origins = [origin.strip() for origin in cors_origins_str.split(',')]
 CORS(app, origins=cors_origins, supports_credentials=True)
 
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://zero-mumu-tax.netlify.app')
 
 # Initialize extensions
 db.init_app(app)
@@ -68,10 +64,27 @@ jwt = JWTManager(app)
 mail = Mail(app)
 limiter = Limiter(get_remote_address, app=app, default_limits=["1000 per day", "200 per hour"])
 
+# ========================================
+# CORS PREFLIGHT HANDLER
+# ========================================
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = make_response()
+        origin = request.headers.get('Origin')
+        if origin in cors_origins or any(origin.endswith(domain.replace('*', '')) for domain in cors_origins if '*' in domain):
+            response.headers.add("Access-Control-Allow-Origin", origin)
+        else:
+            response.headers.add("Access-Control-Allow-Origin", cors_origins[0] if cors_origins else '*')
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+        response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        response.headers.add("Access-Control-Allow-Credentials", "true")
+        response.headers.add("Access-Control-Max-Age", "3600")
+        return response, 200
+
 # Create tables
 with app.app_context():
     db.create_all()
-    # Initialize social proof stats if not exists
     if not SocialProofStats.query.first():
         stats = SocialProofStats(
             total_users=0,
@@ -177,8 +190,6 @@ def calculate_pit(data):
         
         total_income = total_employment + total_business + total_other
         
-        print(f"📊 PIT Calculation: Employment={total_employment}, Business={total_business}, Other={total_other}, Total={total_income}")
-        
         # Calculate qualifying income for pension
         qualifying_income = employment_basic + employment_housing + employment_transport
         max_pension = qualifying_income * 0.08
@@ -247,7 +258,6 @@ def calculate_pit(data):
             }
         }
         
-        print(f"✅ PIT Result: {result}")
         return {'success': True, 'data': result}
         
     except Exception as e:
@@ -464,460 +474,6 @@ def calculate_rent_relief(data):
         return {'success': False, 'error': str(e)}
 
 # ========================================
-# HELPER FUNCTIONS
-# ========================================
-def handle_preflight():
-    response = make_response()
-    response.headers.add("Access-Control-Allow-Origin", request.headers.get('Origin', '*'))
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
-    response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-    response.headers.add("Access-Control-Allow-Credentials", "true")
-    return response, 200
-
-def check_and_award_badges(user_id):
-    """Check user activity and award badges"""
-    user = User.query.get(user_id)
-    if not user:
-        return
-    
-    # Count calculations
-    calc_count = Calculation.query.filter_by(user_id=user_id).count()
-    
-    # Badge definitions
-    badges_to_check = [
-        {
-            'name': 'Getting Started',
-            'description': 'Completed your first calculation',
-            'icon': '🌱',
-            'condition': calc_count >= 1
-        },
-        {
-            'name': 'Tax Enthusiast',
-            'description': 'Completed 10 calculations',
-            'icon': '📊',
-            'condition': calc_count >= 10
-        },
-        {
-            'name': 'Tax Expert',
-            'description': 'Completed 50 calculations',
-            'icon': '🏆',
-            'condition': calc_count >= 50
-        },
-        {
-            'name': 'Community Builder',
-            'description': 'Referred 5 friends',
-            'icon': '👥',
-            'condition': Referral.query.filter_by(referrer_id=user_id, used=True).count() >= 5
-        },
-        {
-            'name': 'Early Adopter',
-            'description': 'Joined in the first year',
-            'icon': '⭐',
-            'condition': user.created_at < datetime(2026, 1, 1)
-        }
-    ]
-    
-    for badge_info in badges_to_check:
-        if badge_info['condition']:
-            existing = Badge.query.filter_by(user_id=user_id, name=badge_info['name']).first()
-            if not existing:
-                badge = Badge(
-                    user_id=user_id,
-                    name=badge_info['name'],
-                    description=badge_info['description'],
-                    icon=badge_info['icon']
-                )
-                db.session.add(badge)
-    
-    db.session.commit()
-
-def update_social_proof_stats():
-    """Update global statistics for social proof"""
-    stats = SocialProofStats.query.first()
-    if not stats:
-        stats = SocialProofStats()
-        db.session.add(stats)
-    
-    stats.total_users = User.query.count()
-    stats.total_calculations = Calculation.query.count()
-    
-    # Calculate total savings (sum of potential savings from optimization tips)
-    total_savings = db.session.query(db.func.sum(OptimizationTip.potential_savings)).scalar() or 0
-    stats.total_savings = total_savings
-    
-    # Monthly active users (last 30 days)
-    month_ago = datetime.utcnow() - timedelta(days=30)
-    stats.monthly_active = UserEvent.query.filter(
-        UserEvent.created_at >= month_ago,
-        UserEvent.event_type == 'login'
-    ).distinct(UserEvent.user_id).count()
-    
-    stats.updated_at = datetime.utcnow()
-    db.session.commit()
-
-# ========================================
-# SOCIAL PROOF ENDPOINTS
-# ========================================
-@app.route('/api/stats/social-proof', methods=['GET'])
-def get_social_proof_stats():
-    """Get aggregated statistics for social proof"""
-    stats = SocialProofStats.query.first()
-    if not stats:
-        return jsonify({
-            'total_users': 0,
-            'total_calculations': 0,
-            'total_savings': 0,
-            'monthly_active': 0
-        }), 200
-    
-    # Format savings for display
-    savings_formatted = f"₦{stats.total_savings:,.0f}"
-    users_formatted = f"{stats.total_users:,}"
-    
-    return jsonify({
-        'total_users': stats.total_users,
-        'total_calculations': stats.total_calculations,
-        'total_savings': stats.total_savings,
-        'monthly_active': stats.monthly_active,
-        'formatted': {
-            'users': users_formatted,
-            'savings': savings_formatted
-        }
-    }), 200
-
-@app.route('/api/stats/user-impact', methods=['GET'])
-def get_user_impact_stats():
-    """Get personalized impact statistics for a user"""
-    auth_header = request.headers.get('Authorization')
-    if not auth_header:
-        return jsonify({'error': 'No token'}), 401
-
-    token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
-    
-    try:
-        decoded = decode_token(token)
-        user_id = decoded['sub']
-        
-        # Get user's total calculations
-        calc_count = Calculation.query.filter_by(user_id=user_id).count()
-        
-        # Get user's total savings from optimization tips
-        total_savings = db.session.query(db.func.sum(OptimizationTip.potential_savings)).filter_by(user_id=user_id).scalar() or 0
-        
-        # Get user's rank among all users (by savings)
-        higher_savings_count = db.session.query(db.func.count(OptimizationTip.user_id.distinct())).filter(
-            OptimizationTip.potential_savings > total_savings
-        ).scalar() or 0
-        total_users = User.query.count()
-        rank_percentile = 100 - (higher_savings_count / total_users * 100) if total_users > 0 else 100
-        
-        return jsonify({
-            'success': True,
-            'stats': {
-                'calculation_count': calc_count,
-                'total_savings': total_savings,
-                'rank_percentile': round(rank_percentile, 1),
-                'better_than': f"{round(rank_percentile, 1)}% of users"
-            }
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 401
-
-# ========================================
-# REFERRAL SYSTEM ENDPOINTS
-# ========================================
-@app.route('/api/referral/generate', methods=['POST', 'OPTIONS'])
-def generate_referral():
-    if request.method == 'OPTIONS':
-        return handle_preflight()
-
-    try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No token'}), 401
-
-        token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
-        decoded = decode_token(token)
-        user_id = decoded['sub']
-
-        # Check if user already has a referral code
-        existing = Referral.query.filter_by(referrer_id=user_id, used=False).first()
-        if existing:
-            return jsonify({'success': True, 'code': existing.referral_code}), 200
-
-        # Generate unique code
-        code_raw = hashlib.md5(f"{user_id}-{uuid.uuid4()}".encode()).digest()
-        code = base64.b32encode(code_raw)[:8].decode().upper()
-
-        referral = Referral(
-            referrer_id=user_id,
-            referral_code=code,
-            used=False
-        )
-        db.session.add(referral)
-        db.session.commit()
-
-        return jsonify({'success': True, 'code': code}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/referral/my-code', methods=['GET'])
-def get_my_referral_code():
-    try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No token'}), 401
-
-        token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
-        decoded = decode_token(token)
-        user_id = decoded['sub']
-
-        referral = Referral.query.filter_by(referrer_id=user_id).first()
-        if not referral:
-            return jsonify({'success': True, 'code': None, 'count': 0}), 200
-
-        # Count successful referrals
-        count = Referral.query.filter_by(referrer_id=user_id, used=True).count()
-
-        return jsonify({
-            'success': True,
-            'code': referral.referral_code,
-            'count': count,
-            'credits_earned': count * 15
-        }), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/referral/use', methods=['POST', 'OPTIONS'])
-def use_referral():
-    if request.method == 'OPTIONS':
-        return handle_preflight()
-
-    try:
-        data = request.get_json()
-        code = data.get('code')
-        new_user_id = data.get('user_id')
-
-        if not code or not new_user_id:
-            return jsonify({'error': 'Code and user ID required'}), 400
-
-        referral = Referral.query.filter_by(referral_code=code, used=False).first()
-        if not referral:
-            return jsonify({'error': 'Invalid or expired referral code'}), 400
-
-        # Mark as used
-        referral.used = True
-        referral.referred_id = new_user_id
-        referral.used_at = datetime.utcnow()
-
-        # Give credits to referrer (15 credits)
-        referrer_credit = CreditBalance.query.filter_by(user_id=referral.referrer_id).first()
-        if referrer_credit:
-            referrer_credit.balance += 15
-            transaction = CreditTransaction(
-                user_id=referral.referrer_id,
-                amount=15,
-                description='Referral bonus',
-                transaction_type='bonus'
-            )
-            db.session.add(transaction)
-
-        # Give credits to new user (15 credits)
-        new_user_credit = CreditBalance.query.filter_by(user_id=new_user_id).first()
-        if new_user_credit:
-            new_user_credit.balance += 15
-            transaction2 = CreditTransaction(
-                user_id=new_user_id,
-                amount=15,
-                description='Welcome bonus from referral',
-                transaction_type='bonus'
-            )
-            db.session.add(transaction2)
-
-        db.session.commit()
-
-        # Track event
-        event = UserEvent(
-            user_id=new_user_id,
-            event_type='referral_used',
-            page='referral'
-        )
-        db.session.add(event)
-        db.session.commit()
-
-        return jsonify({'success': True, 'message': 'Referral applied successfully!'}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-# ========================================
-# BADGES ENDPOINTS
-# ========================================
-@app.route('/api/badges', methods=['GET'])
-def get_user_badges():
-    try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No token'}), 401
-
-        token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
-        decoded = decode_token(token)
-        user_id = decoded['sub']
-
-        # Check and award new badges
-        check_and_award_badges(user_id)
-
-        # Get all badges for user
-        badges = Badge.query.filter_by(user_id=user_id).order_by(Badge.awarded_at.desc()).all()
-
-        return jsonify({
-            'success': True,
-            'badges': [{
-                'name': b.name,
-                'description': b.description,
-                'icon': b.icon,
-                'awarded_at': b.awarded_at.isoformat()
-            } for b in badges]
-        }), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/badges/all', methods=['GET'])
-def get_all_badges():
-    """Get all available badges with descriptions"""
-    all_badges = [
-        {
-            'name': 'Getting Started',
-            'description': 'Complete your first calculation',
-            'icon': '🌱',
-            'how_to_earn': 'Use any calculator and save your result'
-        },
-        {
-            'name': 'Tax Enthusiast',
-            'description': 'Complete 10 calculations',
-            'icon': '📊',
-            'how_to_earn': 'Save 10 different calculations'
-        },
-        {
-            'name': 'Tax Expert',
-            'description': 'Complete 50 calculations',
-            'icon': '🏆',
-            'how_to_earn': 'Save 50 calculations'
-        },
-        {
-            'name': 'Community Builder',
-            'description': 'Refer 5 friends',
-            'icon': '👥',
-            'how_to_earn': 'Share your referral link and have friends sign up'
-        },
-        {
-            'name': 'Early Adopter',
-            'description': 'Join in the first year',
-            'icon': '⭐',
-            'how_to_earn': 'Sign up before January 1, 2026'
-        }
-    ]
-    
-    return jsonify({'success': True, 'badges': all_badges}), 200
-
-# ========================================
-# SAVINGS TEASER ENDPOINT
-# ========================================
-@app.route('/api/teaser/savings-estimate', methods=['POST'])
-def get_savings_estimate():
-    """Estimate potential savings based on basic info"""
-    try:
-        data = request.get_json()
-        income = float(data.get('income', 0) or 0)
-        
-        if income <= 0:
-            return jsonify({'estimate': 45000})  # Default teaser
-        
-        # Simple estimation algorithm
-        if income < 1000000:
-            estimate = 45000
-        elif income < 3000000:
-            estimate = 87000
-        elif income < 10000000:
-            estimate = 125000
-        elif income < 25000000:
-            estimate = 234000
-        elif income < 50000000:
-            estimate = 356000
-        else:
-            estimate = 512000
-        
-        # Add some randomness to make it feel personalized
-        variation = random.randint(-5000, 5000)
-        estimate = max(10000, estimate + variation)
-        
-        return jsonify({
-            'estimate': estimate,
-            'formatted': f"₦{estimate:,}"
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'estimate': 45000}), 200
-
-# ========================================
-# TRACKING ENDPOINTS
-# ========================================
-@app.route('/api/track/event', methods=['POST', 'OPTIONS'])
-def track_event():
-    if request.method == 'OPTIONS':
-        return handle_preflight()
-    
-    try:
-        data = request.get_json()
-        event_type = data.get('event_type')
-        calculator_type = data.get('calculator_type')
-        credits_used = data.get('credits_used', 0)
-        page = data.get('page')
-        
-        # Try to get user from token
-        user_id = None
-        auth_header = request.headers.get('Authorization')
-        if auth_header:
-            try:
-                token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
-                decoded = decode_token(token)
-                user_id = decoded['sub']
-            except:
-                pass
-        
-        # Get IP and user agent
-        ip_address = request.remote_addr
-        user_agent = request.headers.get('User-Agent', '')
-        
-        event = UserEvent(
-            user_id=user_id,
-            event_type=event_type,
-            calculator_type=calculator_type,
-            credits_used=credits_used,
-            page=page,
-            user_agent=user_agent,
-            ip_address=ip_address
-        )
-        db.session.add(event)
-        db.session.commit()
-        
-        # Update social proof stats periodically
-        if event_type in ['calculation', 'save']:
-            update_social_proof_stats()
-        
-        return jsonify({'success': True}), 200
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-# ========================================
 # GOOGLE AUTH ENDPOINTS
 # ========================================
 @app.route('/api/auth/google', methods=['POST', 'OPTIONS'])
@@ -928,29 +484,41 @@ def google_auth():
     try:
         data = request.get_json()
         code = data.get('code')
-        referral_code = data.get('ref')  # Optional referral code
+        referral_code = data.get('ref')
         
         if not code:
             return jsonify({'error': 'No code provided'}), 400
         
         token_url = 'https://oauth2.googleapis.com/token'
         token_data = {
-            'code': code, 'client_id': GOOGLE_CLIENT_ID, 'client_secret': GOOGLE_CLIENT_SECRET,
-            'redirect_uri': 'postmessage', 'grant_type': 'authorization_code'
+            'code': code,
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'redirect_uri': 'postmessage',
+            'grant_type': 'authorization_code'
         }
+        
         response = http_requests.post(token_url, data=token_data)
         token_response = response.json()
         
         if 'error' in token_response:
-            return jsonify({'error': 'Failed to exchange code'}), 400
+            return jsonify({'error': 'Failed to exchange code', 'details': token_response}), 400
+        
+        id_token_str = token_response.get('id_token')
+        if not id_token_str:
+            return jsonify({'error': 'No ID token received'}), 400
         
         idinfo = google.oauth2.id_token.verify_oauth2_token(
-            token_response['id_token'], google.auth.transport.requests.Request(), GOOGLE_CLIENT_ID
+            id_token_str,
+            google.auth.transport.requests.Request(),
+            GOOGLE_CLIENT_ID
         )
         
         google_user = {
-            'google_id': idinfo['sub'], 'email': idinfo['email'],
-            'full_name': idinfo.get('name', ''), 'profile_picture': idinfo.get('picture', ''),
+            'google_id': idinfo['sub'],
+            'email': idinfo['email'],
+            'full_name': idinfo.get('name', ''),
+            'profile_picture': idinfo.get('picture', ''),
             'email_verified': idinfo.get('email_verified', False)
         }
         
@@ -965,23 +533,21 @@ def google_auth():
             else:
                 is_new_user = True
                 user = User(
-                    google_id=google_user['google_id'], email=google_user['email'],
-                    full_name=google_user['full_name'], profile_picture=google_user['profile_picture'],
+                    google_id=google_user['google_id'],
+                    email=google_user['email'],
+                    full_name=google_user['full_name'],
+                    profile_picture=google_user['profile_picture'],
                     email_verified=True
                 )
                 db.session.add(user)
-                db.session.commit()
+                db.session.flush()
                 
-                # Give free credits (increased to 15)
                 credit = CreditBalance(user_id=user.id, balance=15)
                 db.session.add(credit)
-                db.session.commit()
                 
-                # Track new user event
                 event = UserEvent(user_id=user.id, event_type='signup', page='google_auth')
                 db.session.add(event)
                 
-                # Process referral if provided
                 if referral_code:
                     referral = Referral.query.filter_by(referral_code=referral_code, used=False).first()
                     if referral:
@@ -989,7 +555,6 @@ def google_auth():
                         referral.referred_id = user.id
                         referral.used_at = datetime.utcnow()
                         
-                        # Give bonus credits to referrer
                         referrer_credit = CreditBalance.query.filter_by(user_id=referral.referrer_id).first()
                         if referrer_credit:
                             referrer_credit.balance += 15
@@ -999,7 +564,6 @@ def google_auth():
                             )
                             db.session.add(trans)
                         
-                        # Give bonus to new user (already has 15, add 15 more = 30)
                         credit.balance += 15
                         trans2 = CreditTransaction(
                             user_id=user.id, amount=15,
@@ -1012,32 +576,39 @@ def google_auth():
         user.last_login = datetime.utcnow()
         db.session.commit()
         
-        # Track login event
         event = UserEvent(user_id=user.id, event_type='login', page='google_auth')
         db.session.add(event)
         db.session.commit()
         
-        access_token = create_access_token(identity=user.id, expires_delta=timedelta(minutes=30))
-        refresh_token = create_refresh_token(identity=user.id, expires_delta=timedelta(days=7))
         credit_balance = CreditBalance.query.filter_by(user_id=user.id).first()
         
-        # Update social proof stats
-        if is_new_user:
-            update_social_proof_stats()
+        access_token = create_access_token(identity=str(user.id), expires_delta=timedelta(minutes=30))
+        refresh_token = create_refresh_token(identity=str(user.id), expires_delta=timedelta(days=7))
         
         return jsonify({
-            'success': True, 'access_token': access_token, 'refresh_token': refresh_token,
+            'success': True,
+            'access_token': access_token,
+            'refresh_token': refresh_token,
             'user': {
-                'id': user.id, 'email': user.email, 'full_name': user.full_name,
-                'profile_picture': user.profile_picture, 'phone': user.phone,
+                'id': user.id,
+                'email': user.email,
+                'full_name': user.full_name,
+                'profile_picture': user.profile_picture,
+                'phone': user.phone,
                 'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
-                'occupation': user.occupation, 'state_of_origin': user.state_of_origin,
-                'state_of_residence': user.state_of_residence, 'email_verified': True,
+                'occupation': user.occupation,
+                'state_of_origin': user.state_of_origin,
+                'state_of_residence': user.state_of_residence,
+                'email_verified': True,
                 'credit_balance': credit_balance.balance if credit_balance else 15
             }
         }), 200
+        
     except Exception as e:
         db.session.rollback()
+        print(f"🔥 Google auth error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/auth/refresh', methods=['POST'])
@@ -1045,12 +616,12 @@ def refresh_token():
     try:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
         decoded = decode_token(token)
-        user = User.query.get(decoded['sub'])
+        user = db.session.get(User, decoded['sub'])
         if not user:
             return jsonify({'error': 'User not found'}), 401
-        access_token = create_access_token(identity=user.id, expires_delta=timedelta(minutes=30))
+        access_token = create_access_token(identity=str(user.id), expires_delta=timedelta(minutes=30))
         return jsonify({'success': True, 'access_token': access_token}), 200
-    except:
+    except Exception as e:
         return jsonify({'error': 'Invalid token'}), 401
 
 @app.route('/api/auth/me', methods=['GET'])
@@ -1058,27 +629,32 @@ def get_current_user():
     try:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
         decoded = decode_token(token)
-        user = User.query.get(decoded['sub'])
+        user = db.session.get(User, decoded['sub'])
         if not user:
             return jsonify({'error': 'User not found'}), 404
         credit = CreditBalance.query.filter_by(user_id=user.id).first()
         
-        # Get badge count
         badge_count = Badge.query.filter_by(user_id=user.id).count()
         
         return jsonify({
-            'success': True, 'user': {
-                'id': user.id, 'email': user.email, 'full_name': user.full_name,
-                'profile_picture': user.profile_picture, 'phone': user.phone,
+            'success': True,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'full_name': user.full_name,
+                'profile_picture': user.profile_picture,
+                'phone': user.phone,
                 'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
-                'occupation': user.occupation, 'state_of_origin': user.state_of_origin,
-                'state_of_residence': user.state_of_residence, 'email_verified': user.email_verified,
+                'occupation': user.occupation,
+                'state_of_origin': user.state_of_origin,
+                'state_of_residence': user.state_of_residence,
+                'email_verified': user.email_verified,
                 'created_at': user.created_at.isoformat() if user.created_at else None,
                 'credit_balance': credit.balance if credit else 0,
                 'badge_count': badge_count
             }
         }), 200
-    except:
+    except Exception as e:
         return jsonify({'error': 'Invalid token'}), 401
 
 @app.route('/api/auth/profile', methods=['PUT', 'OPTIONS'])
@@ -1088,7 +664,7 @@ def update_profile():
     try:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
         decoded = decode_token(token)
-        user = User.query.get(decoded['sub'])
+        user = db.session.get(User, decoded['sub'])
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
@@ -1110,12 +686,18 @@ def update_profile():
         credit = CreditBalance.query.filter_by(user_id=user.id).first()
         
         return jsonify({
-            'success': True, 'user': {
-                'id': user.id, 'email': user.email, 'full_name': user.full_name,
-                'profile_picture': user.profile_picture, 'phone': user.phone,
+            'success': True,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'full_name': user.full_name,
+                'profile_picture': user.profile_picture,
+                'phone': user.phone,
                 'date_of_birth': user.date_of_birth.isoformat() if user.date_of_birth else None,
-                'occupation': user.occupation, 'state_of_origin': user.state_of_origin,
-                'state_of_residence': user.state_of_residence, 'email_verified': user.email_verified,
+                'occupation': user.occupation,
+                'state_of_origin': user.state_of_origin,
+                'state_of_residence': user.state_of_residence,
+                'email_verified': user.email_verified,
                 'credit_balance': credit.balance if credit else 0
             }
         }), 200
@@ -1124,12 +706,12 @@ def update_profile():
         return jsonify({'error': str(e)}), 500
 
 # ========================================
-# CALCULATION ENDPOINTS - FIXED WITH REAL LOGIC
+# CALCULATION ENDPOINTS
 # ========================================
 @app.route('/api/v1/calculate/pit', methods=['POST', 'OPTIONS'])
 def pit_calc():
     if request.method == 'OPTIONS':
-        return '', 200
+        return handle_preflight()
     try:
         data = request.get_json()
         result = calculate_pit(data)
@@ -1143,7 +725,7 @@ def pit_calc():
 @app.route('/api/v1/calculate/cit', methods=['POST', 'OPTIONS'])
 def cit_calc():
     if request.method == 'OPTIONS':
-        return '', 200
+        return handle_preflight()
     try:
         data = request.get_json()
         result = calculate_cit(data)
@@ -1157,7 +739,7 @@ def cit_calc():
 @app.route('/api/v1/calculate/vat', methods=['POST', 'OPTIONS'])
 def vat_calc():
     if request.method == 'OPTIONS':
-        return '', 200
+        return handle_preflight()
     try:
         data = request.get_json()
         result = calculate_vat(data)
@@ -1171,7 +753,7 @@ def vat_calc():
 @app.route('/api/v1/calculate/wht', methods=['POST', 'OPTIONS'])
 def wht_calc():
     if request.method == 'OPTIONS':
-        return '', 200
+        return handle_preflight()
     try:
         data = request.get_json()
         result = calculate_wht(data)
@@ -1185,7 +767,7 @@ def wht_calc():
 @app.route('/api/v1/calculate/rent', methods=['POST', 'OPTIONS'])
 def rent_calc():
     if request.method == 'OPTIONS':
-        return '', 200
+        return handle_preflight()
     try:
         data = request.get_json()
         result = calculate_rent_relief(data)
@@ -1226,7 +808,6 @@ def save_calculation():
         ))
         db.session.commit()
         
-        # Track event
         event = UserEvent(
             user_id=user_id, 
             event_type='save_calculation',
@@ -1235,13 +816,6 @@ def save_calculation():
             page=data['calculator_type']
         )
         db.session.add(event)
-        
-        # Check for new badges
-        check_and_award_badges(user_id)
-        
-        # Update social proof stats
-        update_social_proof_stats()
-        
         db.session.commit()
         
         return jsonify({'success': True, 'calculation_id': calc.id, 'new_balance': credit.balance}), 201
@@ -1260,7 +834,7 @@ def get_calculations():
             'id': c.id, 'calculator_type': c.calculator_type, 'input_data': c.input_data,
             'result_data': c.result_data, 'tax_year': c.tax_year, 'created_at': c.created_at.isoformat()
         } for c in calcs]}), 200
-    except:
+    except Exception as e:
         return jsonify({'error': 'Invalid token'}), 401
 
 @app.route('/api/calculations/<int:calc_id>', methods=['DELETE'])
@@ -1275,11 +849,133 @@ def delete_calculation(calc_id):
         db.session.delete(calc)
         db.session.commit()
         return jsonify({'success': True}), 200
-    except:
+    except Exception as e:
         return jsonify({'error': 'Invalid token'}), 401
 
 # ========================================
-# WHAT-IF COMPARISON
+# CREDIT PURCHASE
+# ========================================
+@app.route('/api/credits/purchase', methods=['POST', 'OPTIONS'])
+def purchase_credits():
+    if request.method == 'OPTIONS':
+        return handle_preflight()
+
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        decoded = decode_token(token)
+        user_id = decoded['sub']
+
+        data = request.get_json()
+        credits = data.get('credits')
+
+        if not credits:
+            return jsonify({'error': 'Credits amount required'}), 400
+
+        credit_balance = CreditBalance.query.filter_by(user_id=user_id).first()
+        if not credit_balance:
+            credit_balance = CreditBalance(user_id=user_id, balance=0)
+            db.session.add(credit_balance)
+
+        credit_balance.balance += credits
+
+        transaction = CreditTransaction(
+            user_id=user_id,
+            amount=credits,
+            description=f'Purchased {credits} credits',
+            transaction_type='purchase',
+            reference=str(uuid.uuid4())
+        )
+        db.session.add(transaction)
+        db.session.commit()
+
+        event = UserEvent(user_id=user_id, event_type='purchase', credits_used=credits, page='credits')
+        db.session.add(event)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'new_balance': credit_balance.balance,
+            'message': f'{credits} credits added successfully'
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# ========================================
+# HEALTH CHECK
+# ========================================
+@app.route('/health', methods=['GET', 'OPTIONS'])
+def health():
+    if request.method == 'OPTIONS':
+        return handle_preflight()
+    return jsonify({'status': 'healthy', 'service': 'Zero Mumu Tax API', 'version': 'NTA 2025'})
+
+# ========================================
+# STATS ENDPOINTS
+# ========================================
+@app.route('/api/stats/user-impact', methods=['GET'])
+def get_user_impact_stats():
+    """Get personalized impact statistics for a user"""
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        decoded = decode_token(token)
+        user_id = decoded['sub']
+        
+        # Get user's total calculations
+        calc_count = Calculation.query.filter_by(user_id=user_id).count()
+        
+        # Get user's total savings from optimization tips
+        total_savings = db.session.query(db.func.sum(OptimizationTip.potential_savings)).filter_by(user_id=user_id).scalar() or 0
+        
+        # Get user's rank among all users (by savings)
+        higher_savings_count = db.session.query(db.func.count(OptimizationTip.user_id.distinct())).filter(
+            OptimizationTip.potential_savings > total_savings
+        ).scalar() or 0
+        total_users = User.query.count()
+        rank_percentile = 100 - (higher_savings_count / total_users * 100) if total_users > 0 else 100
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'calculation_count': calc_count,
+                'total_savings': total_savings,
+                'rank_percentile': round(rank_percentile, 1),
+                'better_than': f"Better than {round(rank_percentile, 1)}% of users"
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 401
+
+# ========================================
+# BADGES ENDPOINTS
+# ========================================
+@app.route('/api/badges', methods=['GET'])
+def get_user_badges():
+    """Get user's earned badges"""
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        decoded = decode_token(token)
+        user_id = decoded['sub']
+        
+        badges = Badge.query.filter_by(user_id=user_id).order_by(Badge.awarded_at.desc()).all()
+        
+        return jsonify({
+            'success': True,
+            'badges': [{
+                'name': b.name,
+                'description': b.description,
+                'icon': b.icon,
+                'awarded_at': b.awarded_at.isoformat()
+            } for b in badges]
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 401
+
+# ========================================
+# WHAT-IF COMPARISON ENDPOINT
 # ========================================
 @app.route('/api/calculations/compare', methods=['POST', 'OPTIONS'])
 def create_comparison():
@@ -1287,11 +983,7 @@ def create_comparison():
         return handle_preflight()
     
     try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No token provided'}), 401
-
-        token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
         decoded = decode_token(token)
         user_id = decoded['sub']
 
@@ -1375,59 +1067,141 @@ def create_comparison():
         return jsonify({'error': str(e)}), 500
 
 # ========================================
+# REFERRAL ENDPOINTS
+# ========================================
+@app.route('/api/referral/generate', methods=['POST', 'OPTIONS'])
+def generate_referral():
+    if request.method == 'OPTIONS':
+        return handle_preflight()
+
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        decoded = decode_token(token)
+        user_id = decoded['sub']
+
+        # Check if user already has a referral code
+        existing = Referral.query.filter_by(referrer_id=user_id, used=False).first()
+        if existing:
+            return jsonify({'success': True, 'code': existing.referral_code}), 200
+
+        # Generate unique code
+        code_raw = hashlib.md5(f"{user_id}-{uuid.uuid4()}".encode()).digest()
+        code = base64.b32encode(code_raw)[:8].decode().upper()
+
+        referral = Referral(
+            referrer_id=user_id,
+            referral_code=code,
+            used=False
+        )
+        db.session.add(referral)
+        db.session.commit()
+
+        return jsonify({'success': True, 'code': code}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/referral/my-code', methods=['GET'])
+def get_my_referral_code():
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        decoded = decode_token(token)
+        user_id = decoded['sub']
+
+        referral = Referral.query.filter_by(referrer_id=user_id).first()
+        if not referral:
+            return jsonify({'success': True, 'code': None, 'count': 0}), 200
+
+        # Count successful referrals
+        count = Referral.query.filter_by(referrer_id=user_id, used=True).count()
+
+        return jsonify({
+            'success': True,
+            'code': referral.referral_code,
+            'count': count,
+            'credits_earned': count * 15
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ========================================
+# SOCIAL PROOF ENDPOINTS
+# ========================================
+@app.route('/api/stats/social-proof', methods=['GET'])
+def get_social_proof_stats():
+    """Get aggregated statistics for social proof"""
+    stats = SocialProofStats.query.first()
+    if not stats:
+        return jsonify({
+            'total_users': 0,
+            'total_calculations': 0,
+            'total_savings': 0,
+            'monthly_active': 0
+        }), 200
+    
+    # Format savings for display
+    savings_formatted = f"₦{stats.total_savings:,.0f}"
+    users_formatted = f"{stats.total_users:,}"
+    
+    return jsonify({
+        'total_users': stats.total_users,
+        'total_calculations': stats.total_calculations,
+        'total_savings': stats.total_savings,
+        'monthly_active': stats.monthly_active,
+        'formatted': {
+            'users': users_formatted,
+            'savings': savings_formatted
+        }
+    }), 200
+
+# ========================================
+# TEASER ENDPOINT
+# ========================================
+@app.route('/api/teaser/savings-estimate', methods=['POST'])
+def get_savings_estimate():
+    """Estimate potential savings based on basic info"""
+    try:
+        data = request.get_json()
+        income = float(data.get('income', 0) or 0)
+        
+        if income <= 0:
+            return jsonify({'estimate': 45000})  # Default teaser
+        
+        # Simple estimation algorithm
+        if income < 1000000:
+            estimate = 45000
+        elif income < 3000000:
+            estimate = 87000
+        elif income < 10000000:
+            estimate = 125000
+        elif income < 25000000:
+            estimate = 234000
+        elif income < 50000000:
+            estimate = 356000
+        else:
+            estimate = 512000
+        
+        # Add some randomness to make it feel personalized
+        variation = random.randint(-5000, 5000)
+        estimate = max(10000, estimate + variation)
+        
+        return jsonify({
+            'estimate': estimate,
+            'formatted': f"₦{estimate:,}"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'estimate': 45000}), 200
+
+# ========================================
 # OPTIMIZATION TIPS
 # ========================================
-def generate_optimization_tips(user_id, calculation_id, data, result):
-    """Generate tax optimization tips"""
-    tips = []
-    
-    # Pension tip
-    pension = float(data.get('pension_rsa', 0) or 0)
-    basic = float(data.get('employment_basic', 0) or 0)
-    housing = float(data.get('employment_housing', 0) or 0)
-    transport = float(data.get('employment_transport', 0) or 0)
-    qualifying = basic + housing + transport
-    max_pension = qualifying * 0.08
-    
-    if max_pension > 0 and pension < max_pension:
-        additional = max_pension - pension
-        tax_saved = additional * 0.20
-        tips.append({
-            'tip_type': 'pension',
-            'title': 'Increase Your Pension',
-            'description': f'You can contribute up to ₦{max_pension:,.0f} to pension. Adding ₦{additional:,.0f} could save ₦{tax_saved:,.0f}.',
-            'potential_savings': tax_saved
-        })
-    
-    # Rent relief tip
-    rent_paid = float(data.get('rent_paid', 0) or 0)
-    if rent_paid > 0:
-        current_relief = min(rent_paid * 0.20, 500000)
-        if current_relief < 500000:
-            tips.append({
-                'tip_type': 'rent',
-                'title': 'Maximize Rent Relief',
-                'description': f'You can claim up to ₦500,000 rent relief. Currently claiming ₦{current_relief:,.0f}.',
-                'potential_savings': (500000 - current_relief) * 0.20
-            })
-    else:
-        tips.append({
-            'tip_type': 'rent',
-            'title': 'Claim Rent Relief',
-            'description': 'If you pay rent, you can claim up to ₦500,000 deduction.',
-            'potential_savings': 100000
-        })
-    
-    return tips
-
 @app.route('/api/optimization-tips', methods=['GET'])
 def get_optimization_tips():
     try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No token'}), 401
-
-        token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
         decoded = decode_token(token)
         user_id = decoded['sub']
 
@@ -1446,12 +1220,46 @@ def get_optimization_tips():
             return jsonify({'error': 'No PIT calculation found'}), 404
 
         # Generate tips
-        tips = generate_optimization_tips(
-            user_id,
-            latest_calc.id,
-            latest_calc.input_data,
-            latest_calc.result_data
-        )
+        tips = []
+        data = latest_calc.input_data
+        result = latest_calc.result_data
+        
+        # Pension tip
+        pension = float(data.get('pension_rsa', 0) or 0)
+        basic = float(data.get('employment_basic', 0) or 0)
+        housing = float(data.get('employment_housing', 0) or 0)
+        transport = float(data.get('employment_transport', 0) or 0)
+        qualifying = basic + housing + transport
+        max_pension = qualifying * 0.08
+        
+        if max_pension > 0 and pension < max_pension:
+            additional = max_pension - pension
+            tax_saved = additional * 0.20
+            tips.append({
+                'tip_type': 'pension',
+                'title': 'Increase Your Pension',
+                'description': f'You can contribute up to ₦{max_pension:,.0f} to pension. Adding ₦{additional:,.0f} could save ₦{tax_saved:,.0f}.',
+                'potential_savings': tax_saved
+            })
+        
+        # Rent relief tip
+        rent_paid = float(data.get('rent_paid', 0) or 0)
+        if rent_paid > 0:
+            current_relief = min(rent_paid * 0.20, 500000)
+            if current_relief < 500000:
+                tips.append({
+                    'tip_type': 'rent',
+                    'title': 'Maximize Rent Relief',
+                    'description': f'You can claim up to ₦500,000 rent relief. Currently claiming ₦{current_relief:,.0f}.',
+                    'potential_savings': (500000 - current_relief) * 0.20
+                })
+        else:
+            tips.append({
+                'tip_type': 'rent',
+                'title': 'Claim Rent Relief',
+                'description': 'If you pay rent, you can claim up to ₦500,000 deduction.',
+                'potential_savings': 100000
+            })
 
         # Deduct credits
         credit_balance.balance -= 3
@@ -1474,109 +1282,16 @@ def get_optimization_tips():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# ========================================
-# BULK UPLOAD
-# ========================================
-@app.route('/api/bulk-upload', methods=['POST'])
-def bulk_upload():
-    # Your existing bulk upload logic here
-    return jsonify({'success': True, 'message': 'Bulk upload endpoint'}), 200
-
-# ========================================
-# EXPORT TO EXCEL
-# ========================================
-@app.route('/api/export/excel', methods=['POST'])
-def export_excel():
-    # Your existing export logic here
-    return jsonify({'success': True, 'message': 'Export endpoint'}), 200
-
-# ========================================
-# NRS FORM PRE-FILL
-# ========================================
-@app.route('/api/nrs/form/prefill', methods=['POST'])
-def prefill_nrs_form():
-    # Your existing NRS form logic here
-    return jsonify({'success': True, 'message': 'NRS form endpoint'}), 200
-
-# ========================================
-# CREDIT PURCHASE
-# ========================================
-@app.route('/api/credits/purchase', methods=['POST', 'OPTIONS'])
-def purchase_credits():
-    if request.method == 'OPTIONS':
-        return handle_preflight()
-
-    try:
-        auth_header = request.headers.get('Authorization')
-        if not auth_header:
-            return jsonify({'error': 'No token'}), 401
-
-        token = auth_header.split(' ')[1] if ' ' in auth_header else auth_header
-        decoded = decode_token(token)
-        user_id = decoded['sub']
-
-        data = request.get_json()
-        credits = data.get('credits')
-
-        if not credits:
-            return jsonify({'error': 'Credits amount required'}), 400
-
-        credit_balance = CreditBalance.query.filter_by(user_id=user_id).first()
-        if not credit_balance:
-            credit_balance = CreditBalance(user_id=user_id, balance=0)
-            db.session.add(credit_balance)
-
-        credit_balance.balance += credits
-
-        transaction = CreditTransaction(
-            user_id=user_id,
-            amount=credits,
-            description=f'Purchased {credits} credits',
-            transaction_type='purchase',
-            reference=str(uuid.uuid4())
-        )
-        db.session.add(transaction)
-        db.session.commit()
-
-        # Track purchase event
-        event = UserEvent(user_id=user_id, event_type='purchase', credits_used=credits, page='credits')
-        db.session.add(event)
-        db.session.commit()
-
-        return jsonify({
-            'success': True,
-            'new_balance': credit_balance.balance,
-            'message': f'{credits} credits added successfully'
-        }), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-# ========================================
-# HEALTH CHECK
-# ========================================
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'healthy', 'service': 'Zero Mumu Tax API', 'version': 'NTA 2025'})
-
 if __name__ == '__main__':
     print("="*60)
-    print("🔥 ZERO MUMU TAX BACKEND - FULLY FIXED")
+    print("🔥 ZERO MUMU TAX BACKEND - PRODUCTION READY")
     print("="*60)
-    print("✅ Database: SQLite")
-    print("✅ PIT Calculator - FIXED")
-    print("✅ CIT Calculator - FIXED")
-    print("✅ VAT Calculator - FIXED")
-    print("✅ WHT Calculator - FIXED")
-    print("✅ Rent Relief - FIXED")
-    print("✅ What-If Comparison - FIXED")
-    print("✅ Optimization Tips - FIXED")
-    print("✅ Referral system - READY")
-    print("✅ Badges system - READY")
-    print("✅ Social proof tracking - READY")
-    print("✅ Savings teaser - READY")
-    print(f"📍 http://localhost:8000")
+    print("✅ Database: PostgreSQL/SQLite")
+    print("✅ CORS preflight handler added")
+    print("✅ Google Auth with detailed logging")
+    print("✅ All endpoints: PIT, CIT, VAT, WHT, Rent, Comparison")
+    print("✅ Stats, Badges, Referral, Tips endpoints")
+    print(f"📍 Frontend URL: {FRONTEND_URL}")
     print("="*60)
-    port = int(os.environ.get('PORT', 8000))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=True)
