@@ -1,0 +1,6 @@
+2026-03-13 01:06:41,930 INFO: Tax App startup [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT_WORKING\backend-NL\app\__init__.py:56]
+2026-03-13 01:06:42,461 INFO: Database initialized successfully [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT_WORKING\backend-NL\app\__init__.py:100]
+2026-03-13 01:06:50,621 INFO: Tax App startup [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT_WORKING\backend-NL\app\__init__.py:56]
+2026-03-13 01:06:51,000 INFO: Database initialized successfully [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT_WORKING\backend-NL\app\__init__.py:100]
+2026-03-13 01:10:08,163 INFO: Google auth attempt - credential present: True [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT_WORKING\backend-NL\app\routes\auth.py:43]
+2026-03-13 01:10:09,795 INFO: User logged in successfully: rahmidey@gmail.com [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT_WORKING\backend-NL\app\routes\auth.py:200]
