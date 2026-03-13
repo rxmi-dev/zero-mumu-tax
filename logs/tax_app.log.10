@@ -1,0 +1,87 @@
+2026-03-08 16:27:04,084 INFO: Tax App startup [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:56]
+2026-03-08 16:27:04,239 INFO: Database initialized successfully [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:100]
+2026-03-08 16:27:08,488 INFO: Tax App startup [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:56]
+2026-03-08 16:27:08,620 INFO: Database initialized successfully [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:100]
+2026-03-08 16:31:18,117 INFO: Saving daily summary for user 1: {'date': '2026-03-08', 'sales': 10000, 'other_income': 0, 'cost_of_goods': 0, 'transport': 500, 'rent': 100000, 'wages': 0, 'utilities': 3000, 'ajo': 1500, 'other_expenses': 1000, 'personal_expenses': 0} [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\daily.py:79]
+2026-03-08 16:32:25,331 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 16:32:58,288 INFO: Google auth attempt - credential present: True [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\auth.py:43]
+2026-03-08 16:32:59,300 INFO: User logged in successfully: rahmidey@gmail.com [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\auth.py:200]
+2026-03-08 16:35:08,914 INFO: Saving daily summary for user 1: {'date': '2026-03-08', 'sales': 50000, 'other_income': 0, 'cost_of_goods': 2000, 'transport': 1500, 'rent': 2000, 'wages': 0, 'utilities': 1000, 'ajo': 500, 'other_expenses': 0, 'personal_expenses': 0} [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\daily.py:79]
+2026-03-08 23:31:33,372 ERROR: token_required error: Signature has expired [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:31:33,472 ERROR: token_required error: Signature has expired [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:31:34,986 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:31:35,009 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:31:35,328 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:31:35,376 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:32:13,172 INFO: Google auth attempt - credential present: True [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\auth.py:43]
+2026-03-08 23:32:14,379 INFO: User logged in successfully: rahmidey@gmail.com [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\auth.py:200]
+2026-03-08 23:38:30,890 INFO: Tax App startup [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:56]
+2026-03-08 23:38:31,513 INFO: Database initialized successfully [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:100]
+2026-03-08 23:41:43,639 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:41:43,672 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:41:43,990 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:41:44,124 ERROR: token_required error: Missing Authorization Header [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\utils\auth_decorators.py:65]
+2026-03-08 23:47:53,054 INFO: Google auth attempt - credential present: True [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\auth.py:43]
+2026-03-08 23:47:54,405 INFO: User logged in successfully: rahmidey@gmail.com [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\routes\auth.py:200]
+2026-03-09 00:00:37,844 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:00:37,865 ERROR: Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 865, in full_dispatch_request
+    rv = self.preprocess_request()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 1239, in preprocess_request
+    rv = self.ensure_sync(before_func)()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1153, in _check_request_limit
+    raise e
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1150, in _check_request_limit
+    self.__evaluate_limits(endpoint, all_limits)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1134, in __evaluate_limits
+    raise RateLimitExceeded(
+flask_limiter.errors.RateLimitExceeded: 429 Too Many Requests: 50 per 1 hour
+ [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:62]
+2026-03-09 00:01:07,916 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:01:07,923 ERROR: Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 865, in full_dispatch_request
+    rv = self.preprocess_request()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 1239, in preprocess_request
+    rv = self.ensure_sync(before_func)()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1153, in _check_request_limit
+    raise e
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1150, in _check_request_limit
+    self.__evaluate_limits(endpoint, all_limits)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1134, in __evaluate_limits
+    raise RateLimitExceeded(
+flask_limiter.errors.RateLimitExceeded: 429 Too Many Requests: 50 per 1 hour
+ [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:62]
+2026-03-09 00:01:37,596 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:01:37,606 ERROR: Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 865, in full_dispatch_request
+    rv = self.preprocess_request()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 1239, in preprocess_request
+    rv = self.ensure_sync(before_func)()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1153, in _check_request_limit
+    raise e
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1150, in _check_request_limit
+    self.__evaluate_limits(endpoint, all_limits)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1134, in __evaluate_limits
+    raise RateLimitExceeded(
+flask_limiter.errors.RateLimitExceeded: 429 Too Many Requests: 50 per 1 hour
+ [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:62]
+2026-03-09 00:02:07,911 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:02:07,917 ERROR: Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 865, in full_dispatch_request
+    rv = self.preprocess_request()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask\app.py", line 1239, in preprocess_request
+    rv = self.ensure_sync(before_func)()
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1153, in _check_request_limit
+    raise e
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1150, in _check_request_limit
+    self.__evaluate_limits(endpoint, all_limits)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\flask_limiter\extension.py", line 1134, in __evaluate_limits
+    raise RateLimitExceeded(
+flask_limiter.errors.RateLimitExceeded: 429 Too Many Requests: 50 per 1 hour
+ [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:62]
+2026-03-09 00:02:37,587 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:03:07,906 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:03:37,590 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:04:07,971 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:04:37,590 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]
+2026-03-09 00:05:07,902 ERROR: Unhandled exception: 429 Too Many Requests: 50 per 1 hour [in C:\Users\Admin\Desktop\ZMT-NEW-LAYOUT\backend-NL\app\__init__.py:61]

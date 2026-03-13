@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+*.log
+instance/
+venv/
+env/
+.python-version
+.DS_Store
+*.db
